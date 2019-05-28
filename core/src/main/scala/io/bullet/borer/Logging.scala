@@ -324,12 +324,6 @@ object Logging {
       target.onString(value)
     }
 
-    def onChars(length: Int, buffer: Array[Char]): Unit = {
-      logger.onChars(length, buffer)
-      count()
-      target.onChars(length, buffer)
-    }
-
     def onText[Bytes: ByteAccess](value: Bytes): Unit = {
       logger.onText(value)
       count()

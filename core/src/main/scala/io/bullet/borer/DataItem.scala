@@ -25,19 +25,18 @@ object DataItem {
     final val Double       = 8
     final val NumberString = 9
     final val String       = 10
-    final val Chars        = 11
-    final val Text         = 12
-    final val TextStart    = 13
-    final val Bytes        = 14
-    final val BytesStart   = 15
-    final val ArrayHeader  = 16
-    final val ArrayStart   = 17
-    final val MapHeader    = 18
-    final val MapStart     = 19
-    final val Break        = 20
-    final val Tag          = 21
-    final val SimpleValue  = 22
-    final val EndOfInput   = 23
+    final val Text         = 11
+    final val TextStart    = 12
+    final val Bytes        = 13
+    final val BytesStart   = 14
+    final val ArrayHeader  = 15
+    final val ArrayStart   = 16
+    final val MapHeader    = 17
+    final val MapStart     = 18
+    final val Break        = 29
+    final val Tag          = 20
+    final val SimpleValue  = 21
+    final val EndOfInput   = 22
   }
 
   //////////////////////////////// BASIC ////////////////////////////////
@@ -53,7 +52,6 @@ object DataItem {
   final val Double       = 1 << Shifts.Double
   final val NumberString = 1 << Shifts.NumberString
   final val String       = 1 << Shifts.String
-  final val Chars        = 1 << Shifts.Chars
   final val Text         = 1 << Shifts.Text
   final val TextStart    = 1 << Shifts.TextStart
   final val Bytes        = 1 << Shifts.Bytes
@@ -96,7 +94,6 @@ object DataItem {
             case NumberString => "NumberString"
 
             case String    => "String"
-            case Chars     => "Chars"
             case Text      => "Text"
             case TextStart => "Start of unbounded Text"
 

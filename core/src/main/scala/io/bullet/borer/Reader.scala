@@ -34,7 +34,7 @@ final class InputReader[+In <: Input, +Config <: Reader.Config](
   private[this] var _dataItem: Int                        = _
 
   @inline def dataItem: Int = {
-    if (_dataItem == DataItem.None) _dataItem = parser.pull(receiver)
+    if (_dataItem == DataItem.None) _dataItem = parser.readNextDataItem(receiver)
     _dataItem
   }
 
@@ -250,14 +250,13 @@ final class InputReader[+In <: Input, +Config <: Reader.Config](
 
   def readString(): String =
     dataItem match {
-      case DI.Chars     => ret(new String(receptacle.charBufValue, 0, receptacle.intValue))
       case DI.String    => ret(receptacle.stringValue)
       case DI.Text      => stringOf(readSizedTextBytes[Array[Byte]]())
       case DI.TextStart => stringOf(readUnsizedTextBytes[Array[Byte]]())
       case _            => unexpectedDataItem(expected = "String or Text Bytes")
     }
   def readString(s: String): this.type = if (tryReadString(s)) this else unexpectedDataItem(expected = '"' + s + '"')
-  @inline def hasString: Boolean       = hasAnyOf(DI.String | DI.Chars | DI.Text | DI.TextStart)
+  @inline def hasString: Boolean       = hasAnyOf(DI.String | DI.Text | DI.TextStart)
 
   /**
     * Tests the current data item for equality with the given [[String]].
@@ -266,11 +265,6 @@ final class InputReader[+In <: Input, +Config <: Reader.Config](
     */
   @inline def hasString(value: String): Boolean =
     dataItem match {
-      case DI.Chars =>
-        val len = receptacle.intValue
-        @tailrec def rec(buf: Array[Char], ix: Int): Boolean =
-          ix == len || buf(ix) == value.charAt(ix) && rec(buf, ix + 1)
-        len == value.length && rec(receptacle.charBufValue, 0)
       case DI.String => receptacle.stringValue == value
       case DI.Text   => receptacle.stringCompareBytes(value) == 0
       case _         => false
@@ -293,14 +287,6 @@ final class InputReader[+In <: Input, +Config <: Reader.Config](
     */
   def stringCompare(value: String): Int =
     dataItem match {
-      case DI.Chars =>
-        val limit = math.min(value.length, receptacle.intValue)
-        @tailrec def rec(buf: Array[Char], ix: Int): Int =
-          if (ix < limit) {
-            val diff = buf(ix).toInt - value.charAt(ix).toInt
-            if (diff != 0) diff else rec(buf, ix + 1)
-          } else receptacle.intValue - value.length
-        rec(receptacle.charBufValue, 0)
       case DI.String => receptacle.stringValue.compareTo(value)
       case DI.Text   => receptacle.stringCompareBytes(value)
       case _         => Int.MinValue

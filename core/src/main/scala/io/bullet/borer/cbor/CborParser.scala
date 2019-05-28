@@ -30,7 +30,7 @@ final private[borer] class CborParser[In <: Input](val input: In, config: CborPa
     * The given [[Receiver]] receives exactly one call to one of its methods.
     * The returned `Int` is the [[DataItem]] code for the value the [[Receiver]] received.
     */
-  def pull(receiver: Receiver): Int = {
+  def readNextDataItem(receiver: Receiver): Int = {
 
     @inline def decodePositiveInteger(uLong: Long): Int = {
       if (Util.isUnsignedInt(uLong)) {

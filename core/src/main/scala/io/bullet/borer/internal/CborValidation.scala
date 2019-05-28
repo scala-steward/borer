@@ -141,12 +141,6 @@ object CborValidation {
       _target.onString(value)
     }
 
-    def onChars(length: Int, buffer: Array[Char]): Unit = {
-      checkAllowed(DI.Chars)
-      count()
-      _target.onChars(length, buffer)
-    }
-
     def onText[Bytes: ByteAccess](value: Bytes): Unit = {
       checkAllowed(DI.Text)
       count()
@@ -155,7 +149,7 @@ object CborValidation {
 
     def onTextStart(): Unit = {
       checkAllowed(DI.TextStart)
-      enterLevel(0, DI.String | DI.Chars | DI.Text | DI.TextStart | UNBOUNDED)
+      enterLevel(0, DI.String | DI.Text | DI.TextStart | UNBOUNDED)
       _target.onTextStart()
     }
 
@@ -227,7 +221,7 @@ object CborValidation {
 
         case Tag.DateTimeString | Tag.TextUri | Tag.TextBase64Url | Tag.TextBase64 | Tag.TextRegex | Tag.TextMime =>
           checkAllowed(DI.Tag)
-          enterLevel(1L, DI.String | DI.Chars | DI.Text)
+          enterLevel(1L, DI.String | DI.Text)
 
         case Tag.DecimalFraction | Tag.BigFloat =>
           checkAllowed(DI.Tag)

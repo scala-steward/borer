@@ -283,8 +283,8 @@ object Dom {
         case DIS.Bytes      => ByteArrayElem(r.readByteArray())
         case DIS.BytesStart => BytesStreamElem(r.read()(bytesDecoder))
 
-        case DIS.Chars | DIS.String | DIS.Text => StringElem(r.readString())
-        case DIS.TextStart                     => TextStreamElem(r.read()(textDecoder))
+        case DIS.String | DIS.Text => StringElem(r.readString())
+        case DIS.TextStart         => TextStreamElem(r.read()(textDecoder))
 
         case DIS.SimpleValue => SimpleValueElem(SimpleValue(r.readSimpleValue()))
 

@@ -31,7 +31,6 @@ abstract class Receiver {
   def onBytesStart(): Unit
 
   def onString(value: String): Unit
-  def onChars(length: Int, buffer: Array[Char]): Unit
   def onText[Bytes: ByteAccess](value: Bytes): Unit
   def onTextStart(): Unit
 
@@ -69,7 +68,7 @@ object Receiver {
     def input: In
 
     /**
-      * The index of the first byte of the value that was produced by the last call to `pull`.
+      * The index of the first byte of the value that was produced by the last call to `readNextDataItem`.
       */
     def valueIndex: Long
 
@@ -78,7 +77,7 @@ object Receiver {
       * The given [[Receiver]] receives exactly one call to one of its methods.
       * The returned `Int` is the [[DataItem]] code for the value the [[Receiver]] received.
       */
-    def pull(receiver: Receiver): Int
+    def readNextDataItem(receiver: Receiver): Int
   }
 
   type ParserCreator[In <: Input, Config] = (In, Config) => Parser[In]

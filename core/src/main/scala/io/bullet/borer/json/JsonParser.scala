@@ -70,7 +70,7 @@ final private[borer] class JsonParser[In <: Input](val input: In, val config: Js
     * The given [[Receiver]] receives exactly one call to one of its methods.
     * The returned `Int` is the [[DataItem]] code for the value the [[Receiver]] received.
     */
-  def pull(receiver: Receiver): Int = {
+  def readNextDataItem(receiver: Receiver): Int = {
 
     @inline def appendChar(charCursor: Int, c: Char): Int = {
       val newCursor = charCursor + 1
@@ -85,7 +85,7 @@ final private[borer] class JsonParser[In <: Input](val input: In, val config: Js
         nextChar = nextCharAfterWhitespace(quad & 0xFF)
         receiver.onNull()
         DataItem.Null
-      } else failSyntaxError(-4, "`null`")
+      } else failSyntaxError(-5, "`null`")
     }
 
     @inline def parseFalse(): Int =
@@ -93,7 +93,7 @@ final private[borer] class JsonParser[In <: Input](val input: In, val config: Js
         fetchNextChar()
         receiver.onBoolean(value = false)
         DataItem.Boolean
-      } else failSyntaxError(-5, "`false`")
+      } else failSyntaxError(-6, "`false`")
 
     @inline def parseTrue(): Int = {
       val quad = input.readQuadByteBigEndianPaddedFF()
@@ -101,7 +101,7 @@ final private[borer] class JsonParser[In <: Input](val input: In, val config: Js
         nextChar = nextCharAfterWhitespace(quad & 0xFF)
         receiver.onBoolean(value = true)
         DataItem.Boolean
-      } else failSyntaxError(-4, "`true`")
+      } else failSyntaxError(-5, "`true`")
     }
 
     def parseNumberStringExponentPart(len: Int): Int = {
@@ -431,8 +431,8 @@ final private[borer] class JsonParser[In <: Input](val input: In, val config: Js
             input.moveCursor(-1)
             nextCharAfterWhitespace()
           } else c.toInt
-          receiver.onChars(newCursor, chars)
-          DataItem.Chars
+          receiver.onString(new String(chars, 0, newCursor))
+          DataItem.String
         } else if (stopChar == '\\') {
           input.moveCursor(-1)
           parseUtf8String(parseEscapeSeq(newCursor))

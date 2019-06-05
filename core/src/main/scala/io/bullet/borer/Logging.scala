@@ -9,7 +9,7 @@
 package io.bullet.borer
 
 import java.lang.{StringBuilder => JStringBuilder}
-import java.nio.charset.StandardCharsets.UTF_8
+import java.nio.charset.StandardCharsets.{ISO_8859_1, UTF_8}
 import java.util
 
 import io.bullet.borer
@@ -322,6 +322,11 @@ object Logging {
       logger.onString(value)
       count()
       target.onString(value)
+    }
+
+    def onString(value: Array[Byte], start: Int, end: Int, utf8: Boolean): Unit = {
+      val bytes = if (start != 0 || end != value.length) util.Arrays.copyOfRange(value, start, end) else value
+      onString(new String(bytes, if (utf8) UTF_8 else ISO_8859_1))
     }
 
     def onText[Bytes: ByteAccess](value: Bytes): Unit = {

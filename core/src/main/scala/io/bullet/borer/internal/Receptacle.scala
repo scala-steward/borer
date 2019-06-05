@@ -8,9 +8,9 @@
 
 package io.bullet.borer.internal
 
-import io.bullet.borer._
+import java.nio.charset.StandardCharsets.{ISO_8859_1, UTF_8}
 
-import scala.annotation.tailrec
+import io.bullet.borer._
 
 /**
   * A [[Receiver]] which simply buffers all incoming data in fields of the appropriate type,
@@ -20,6 +20,7 @@ final private[borer] class Receptacle extends Receiver with java.lang.Cloneable 
 
   private[this] var _bool: Boolean  = _
   private[this] var _int: Int       = _
+  private[this] var _int2: Int      = _
   private[this] var _long: Long     = _
   private[this] var _float: Float   = _
   private[this] var _double: Double = _
@@ -29,46 +30,34 @@ final private[borer] class Receptacle extends Receiver with java.lang.Cloneable 
 
   @inline def boolValue: Boolean  = _bool
   @inline def intValue: Int       = _int
+  @inline def int2Value: Int      = _int2
   @inline def longValue: Long     = _long
   @inline def floatValue: Float   = _float
   @inline def doubleValue: Double = _double
-  @inline def stringValue: String = _obj.asInstanceOf[String]
   @inline def tagValue: Tag       = _obj.asInstanceOf[Tag]
 
   @inline def getBytes[Bytes](implicit byteAccess: ByteAccess[Bytes]): Bytes =
     byteAccess.convert(_obj)(_byteAccess)
 
-  @inline def stringCompareBytes(string: String): Int = {
-    def failIllegalArg(msg: String) = throw new IllegalArgumentException(msg)
-    val input                       = _byteAccess.inputFrom(_obj)
+  @inline def stringValue: String =
+    if (_long != 0) _obj.asInstanceOf[String]
+    else new String(_obj.asInstanceOf[Array[Byte]], _int, _int2, if (_bool) UTF_8 else ISO_8859_1)
 
-    @tailrec def rec(stringIx: Int): Int =
-      if (stringIx < string.length) {
-        var six = stringIx
-        if (input.prepareRead(1)) {
-          val bytesCodepoint = {
-            val b = input.readByte().toInt
-            if (b < 0) input.readMultiByteUtf8Codepoint(b) else b
-          }
-          val stringCodepoint = {
-            val c = string.charAt(six)
-            if (Character.isHighSurrogate(c)) {
-              six += 1
-              if (six < string.length) {
-                val c2 = string.charAt(six)
-                if (Character.isLowSurrogate(c2)) Character.toCodePoint(c, c2)
-                else failIllegalArg(s"""Invalid UTF-16 surrogate pair at index $stringIx of string "$string"""")
-              } else failIllegalArg(s"""Truncated UTF-16 surrogate pair at end of string "$string"""")
-            } else c.toInt
-          }
-          val d = bytesCodepoint - stringCodepoint
-          if (d == 0) rec(six + 1) else d
-        } else -1
-      } else if (input.prepareRead(1)) /* `string` is a prefix of the parsed string */ 1
-      else 0
+  def stringCompare(string: String): Int =
+    stringValue.compareTo(string)
 
-    rec(0)
-  }
+  def stringCompare(utf8Bytes: Array[Byte]): Int =
+    -Util.stringCompare(new Input.FromByteArray(utf8Bytes), stringValue)
+
+  def textCompare(string: String): Int =
+    Util.stringCompare(_byteAccess.inputFrom(_obj), string)
+
+  def textCompare(utf8Bytes: Array[Byte]): Int =
+    Util.bytesCompare(
+      _byteAccess.inputFrom(_obj),
+      _byteAccess.sizeOf(_obj),
+      new Input.FromByteArray(utf8Bytes),
+      utf8Bytes.length.toLong)
 
   def onNull(): Unit = ()
 
@@ -91,7 +80,10 @@ final private[borer] class Receptacle extends Receiver with java.lang.Cloneable 
 
   def onDouble(value: Double): Unit = _double = value
 
-  def onNumberString(value: String): Unit = _obj = value
+  def onNumberString(value: String): Unit = {
+    _obj = value
+    _long = 1
+  }
 
   def onBytes[Bytes](value: Bytes)(implicit byteAccess: ByteAccess[Bytes]): Unit = {
     _obj = value
@@ -100,13 +92,17 @@ final private[borer] class Receptacle extends Receiver with java.lang.Cloneable 
 
   def onBytesStart(): Unit = ()
 
-  def onString(value: String): Unit = _obj = value
+  def onString(value: String): Unit = {
+    _obj = value
+    _long = 1
+  }
 
   def onString(value: Array[Byte], start: Int, end: Int, utf8: Boolean): Unit = {
     _obj = value
     _int = start
-    _long = end.toLong
+    _int2 = end - start
     _bool = utf8
+    _long = 0
   }
 
   def onText[Bytes](value: Bytes)(implicit byteAccess: ByteAccess[Bytes]): Unit = {

@@ -97,23 +97,31 @@ object ArrayBasedCodecs {
         def deriveForSealedTrait(tpe: Type, subTypes: List[SubType]) = {
           val typeIdsAndSubTypes: Array[(Key, SubType)] = getTypeIds(tpe, subTypes).zip(subTypes)
           java.util.Arrays.sort(typeIdsAndSubTypes.asInstanceOf[Array[Object]], KeyPairOrdering)
+          def utf8BytesName(sub: SubType) = TermName(s"utf8Bytes${sub.index}")
+          val utf8BytesDefs = typeIdsAndSubTypes.iterator.collect {
+            case (Key.String(x), sub) => q"""val ${utf8BytesName(sub)} = ${literal(x)}.getBytes("UTF8")"""
+          }.toList
 
           def rec(start: Int, end: Int): Tree =
             if (start < end) {
               val mid           = (start + end) >> 1
               val (typeId, sub) = typeIdsAndSubTypes(mid)
-              q"""val cmp = ${r("tryRead", typeId, "Compare")}
+              val cmp = typeId match {
+                case Key.String(_) => q"r.tryReadStringCompare(${utf8BytesName(sub)})"
+                case Key.Long(x)   => q"r.tryReadLongCompare(${literal(x)})"
+              }
+              if (start < mid) {
+                q"""val cmp = $cmp
                   if (cmp < 0) ${rec(start, mid)}
                   else if (cmp > 0) ${rec(mid + 1, end)}
                   else r.read[${sub.tpe}]()"""
-            } else if (start < typeIdsAndSubTypes.length) {
-              val (typeId, sub) = typeIdsAndSubTypes(start)
-              q"if (${r("tryRead", typeId)}) r.read[${sub.tpe}]() else fail()"
+              } else q"if ($cmp == 0) r.read[${sub.tpe}]() else fail()"
             } else q"fail()"
 
           val readTypeIdAndValue = rec(0, typeIdsAndSubTypes.length)
 
-          q"""_root_.io.bullet.borer.Decoder { r =>
+          q"""..$utf8BytesDefs
+              _root_.io.bullet.borer.Decoder { r =>
                 def fail() = r.unexpectedDataItem(${s"type id key for subtype of `$tpe`"})
                 r.readArrayClose(r.readArrayOpen(2), $readTypeIdAndValue)
               }"""

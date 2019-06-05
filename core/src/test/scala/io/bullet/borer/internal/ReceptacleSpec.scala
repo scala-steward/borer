@@ -29,7 +29,7 @@ object ReceptacleSpec extends TestSuite {
       } {
         receptacle.onText(a getBytes StandardCharsets.UTF_8)
 
-        val receptacleCompare = math.signum(receptacle.stringCompareBytes(b))
+        val receptacleCompare = math.signum(receptacle.textCompare(b))
         val stringCompare     = math.signum(a compareTo b)
 
         if (receptacleCompare != stringCompare) {

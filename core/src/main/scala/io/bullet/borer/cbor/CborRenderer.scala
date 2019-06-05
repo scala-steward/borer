@@ -47,7 +47,7 @@ final private[borer] class CborRenderer(var out: Output) extends Receiver.Render
     out = out.writeAsByte(0xFB).writeLong(java.lang.Double.doubleToLongBits(value))
 
   def onNumberString(value: String): Unit =
-    throw new Borer.Error.InvalidInputData(out, s"The CBOR renderer doesn't support writing number strings")
+    failUnsupported(out, "Number Strings")
 
   def onBytes[Bytes](value: Bytes)(implicit byteAccess: ByteAccess[Bytes]): Unit =
     out = writeInteger(byteAccess.sizeOf(value), 0x40).writeBytes(value)
@@ -57,6 +57,9 @@ final private[borer] class CborRenderer(var out: Output) extends Receiver.Render
 
   def onString(value: String): Unit =
     onText(value getBytes UTF_8)
+
+  def onString(value: Array[Byte], start: Int, end: Int, utf8: Boolean): Unit =
+    failUnsupported(out, "raw string bytes")
 
   def onText[Bytes](value: Bytes)(implicit byteAccess: ByteAccess[Bytes]): Unit =
     out = writeInteger(byteAccess.sizeOf(value), 0x60).writeBytes(value)
@@ -109,6 +112,9 @@ final private[borer] class CborRenderer(var out: Output) extends Receiver.Render
      })
       .writeByte(v.toByte)
   }
+
+  private def failUnsupported(out: Output, what: String) =
+    throw new Borer.Error.Unsupported(out, s"The CBOR renderer doesn't support $what")
 }
 
 object CborRenderer extends (Output => CborRenderer) {

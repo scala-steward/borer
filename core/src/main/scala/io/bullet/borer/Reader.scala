@@ -209,7 +209,7 @@ final class InputReader[+In <: Input, +Config <: Reader.Config](
     if (hasNumberString) ret(receptacle.stringValue)
     else unexpectedDataItem(expected = "NumberString")
   @inline def hasNumberString: Boolean                    = has(DI.NumberString)
-  @inline def hasNumberString(value: String): Boolean     = hasNumberString && receptacle.stringValue == value
+  @inline def hasNumberString(value: String): Boolean     = hasNumberString && stringCompare(value) == 0
   @inline def tryReadNumberString(value: String): Boolean = clearIfTrue(hasNumberString(value))
 
   def readByteArray(): Array[Byte]  = readBytes[Array[Byte]]()
@@ -263,13 +263,7 @@ final class InputReader[+In <: Input, +Config <: Reader.Config](
     * NOTE: This method causes unsized text bytes (i.e. text streams) to be buffered and converted
     *       into to a sized text data item!
     */
-  @inline def hasString(value: String): Boolean =
-    dataItem match {
-      case DI.String    => receptacle.stringValue == value
-      case DI.Text      => receptacle.stringCompareBytes(value) == 0
-      case DI.TextStart => bufferUnsizedTextBytes[Array[Byte]]().hasString(value)
-      case _            => false
-    }
+  @inline def hasString(value: String): Boolean = stringCompare(value) == 0
 
   /**
     * Tests the next data item for equality with the given [[String]] and advances the cursor if so.
@@ -290,14 +284,38 @@ final class InputReader[+In <: Input, +Config <: Reader.Config](
     */
   def stringCompare(value: String): Int =
     dataItem match {
-      case DI.String    => receptacle.stringValue.compareTo(value)
-      case DI.Text      => receptacle.stringCompareBytes(value)
+      case DI.String    => receptacle.stringCompare(value)
+      case DI.Text      => receptacle.textCompare(value)
       case DI.TextStart => bufferUnsizedTextBytes[Array[Byte]]().stringCompare(value)
       case _            => Int.MinValue
     }
 
-  def tryReadStringCompare(value: String): Int = {
+  @inline def tryReadStringCompare(value: String): Int = {
     val result = stringCompare(value)
+    if (result == 0) clearDataItem()
+    result
+  }
+
+  /**
+    * Returns one of the following 4 values:
+    * - Int.MinValue if the next data item is not a string
+    * - a negative value (!= Int.MinValue) a if the next data item is a string that compares as '<' to `value`
+    * - zero if the next data item is a string that compares as '==' to `value`
+    * - a positive value if the next data item is a string that compares as '>' to `value`
+    *
+    * NOTE: This method causes unsized text bytes (i.e. text streams) to be buffered and converted
+    *       into to a sized text data item!
+    */
+  def stringCompare(utf8Bytes: Array[Byte]): Int =
+    dataItem match {
+      case DI.String    => receptacle.stringCompare(utf8Bytes)
+      case DI.Text      => receptacle.textCompare(utf8Bytes)
+      case DI.TextStart => bufferUnsizedTextBytes[Array[Byte]]().stringCompare(utf8Bytes)
+      case _            => Int.MinValue
+    }
+
+  def tryReadStringCompare(utf8Bytes: Array[Byte]): Int = {
+    val result = stringCompare(utf8Bytes)
     if (result == 0) clearDataItem()
     result
   }

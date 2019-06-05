@@ -47,7 +47,8 @@ final private[borer] class Receptacle extends Receiver with java.lang.Cloneable 
     stringValue.compareTo(string)
 
   def stringCompare(utf8Bytes: Array[Byte]): Int =
-    -Util.stringCompare(new Input.FromByteArray(utf8Bytes), stringValue)
+    if (_long != 0) -Util.stringCompare(new Input.FromByteArray(utf8Bytes), _obj.asInstanceOf[String])
+    else Util.bytesCompare(_obj.asInstanceOf[Array[Byte]], _int, _int2, utf8Bytes, 0, utf8Bytes.length)
 
   def textCompare(string: String): Int =
     Util.stringCompare(_byteAccess.inputFrom(_obj), string)
@@ -97,10 +98,10 @@ final private[borer] class Receptacle extends Receiver with java.lang.Cloneable 
     _long = 1
   }
 
-  def onString(value: Array[Byte], start: Int, end: Int, utf8: Boolean): Unit = {
+  def onString(value: Array[Byte], ix: Int, len: Int, utf8: Boolean): Unit = {
     _obj = value
-    _int = start
-    _int2 = end - start
+    _int = ix
+    _int2 = len
     _bool = utf8
     _long = 0
   }

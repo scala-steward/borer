@@ -58,7 +58,7 @@ final private[borer] class CborRenderer(var out: Output) extends Receiver.Render
   def onString(value: String): Unit =
     onText(value getBytes UTF_8)
 
-  def onString(value: Array[Byte], start: Int, end: Int, utf8: Boolean): Unit =
+  def onString(value: Array[Byte], ix: Int, len: Int, utf8: Boolean): Unit =
     failUnsupported(out, "raw string bytes")
 
   def onText[Bytes](value: Bytes)(implicit byteAccess: ByteAccess[Bytes]): Unit =

@@ -167,7 +167,7 @@ final private[borer] class JsonRenderer(var out: Output) extends Receiver.Render
     out = count(rec(if (sepRequired) out.writeAsBytes(separator, '"') else out.writeAsByte('"'), 0).writeAsByte('"'))
   }
 
-  def onString(value: Array[Byte], start: Int, end: Int, utf8: Boolean): Unit =
+  def onString(value: Array[Byte], ix: Int, len: Int, utf8: Boolean): Unit =
     failUnsupported(out, "raw string bytes")
 
   def onText[Bytes](value: Bytes)(implicit ba: ByteAccess[Bytes]): Unit =

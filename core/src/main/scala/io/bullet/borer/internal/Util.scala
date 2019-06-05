@@ -153,4 +153,15 @@ object Util {
 
     rec(math.min(al, bl))
   }
+
+  def bytesCompare(a: Array[Byte], ai: Int, alen: Int, b: Array[Byte], bi: Int, blen: Int): Int = {
+    @tailrec def rec(ai: Int, bi: Int, remaining: Int): Int =
+      if (remaining > 0) {
+        val ax  = a(ai) & 0xFF
+        val bx  = b(bi) & 0xFF
+        val cmp = ax - bx
+        if (cmp != 0) cmp else rec(ai + 1, bi + 1, remaining - 1)
+      } else alen - blen
+    rec(ai, bi, math.min(alen, blen))
+  }
 }

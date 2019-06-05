@@ -324,8 +324,8 @@ object Logging {
       target.onString(value)
     }
 
-    def onString(value: Array[Byte], start: Int, end: Int, utf8: Boolean): Unit = {
-      val bytes = if (start != 0 || end != value.length) util.Arrays.copyOfRange(value, start, end) else value
+    def onString(value: Array[Byte], ix: Int, len: Int, utf8: Boolean): Unit = {
+      val bytes = if (ix != 0 || len != value.length) util.Arrays.copyOfRange(value, ix, ix + len) else value
       onString(new String(bytes, if (utf8) UTF_8 else ISO_8859_1))
     }
 

@@ -78,6 +78,19 @@ object Receiver {
       * The returned `Int` is the [[DataItem]] code for the value the [[Receiver]] received.
       */
     def readNextDataItem(receiver: Receiver): Int
+
+    /**
+      * Compares the next data item with the given UTF-8 encoded value and advances the cursor if equal.
+      *
+      * Returns one of the following 4 values:
+      * - Int.MinValue if the next data item is not a string
+      * - a negative value (!= Int.MinValue) a if the next data item is a string that compares as '<' to `value`
+      * - zero if the next data item is a string that compares as '==' to `value`
+      * - a positive value if the next data item is a string that compares as '>' to `value`
+      */
+    def tryReadStringCompare(utf8Bytes: Input.FromByteArray): Int
+
+    def tryReadBreak(): Boolean
   }
 
   type ParserCreator[In <: Input, Config] = (In, Config) => Parser[In]

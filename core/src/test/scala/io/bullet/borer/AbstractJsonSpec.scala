@@ -327,5 +327,42 @@ abstract class AbstractJsonSpec extends AbstractBorerSpec {
       intercept[Borer.Error.InvalidInputData[_ <: AnyRef]](decode[List[Int]]("[12,,42]")).getMessage ==>
       "Expected JSON value but got ',' (input position 4)"
     }
+
+    "tryReadMapKeyCompareUtf8Bytes" - {
+      class Foo(val value: Int)
+      def unescape(s: String) = s.replace("\\n", "\n").replace("\\u0066", "f").replace("\\u0062", "b")
+      def fooDec(testString: String, mapKey: String) = Decoder[Foo] { r =>
+        val cmp = r.readMapStart().tryReadStringCompare(testString getBytes "UTF8")
+        (if (cmp == 0) r else r.readString(unescape(mapKey))).readNull()
+        r.readBreak()
+        new Foo(cmp)
+      }
+      def encoding(mapKey: String) = s"""{"$mapKey":null}"""
+
+      val testStrings = Seq(
+        "",
+        "foo",
+        "foobar",
+        "foo\\nbar",
+        "\\u0066oo\\u0062ar",
+        "12345678",
+        "123456789",
+        "123456789012345678",
+        "1234567890123X45678",
+        "árvíztűrő ütvefúrógép")
+
+      def verify(mapKey: String, testString: String): Unit = {
+        val testCmp = decode[Foo](encoding(mapKey))(fooDec(testString, mapKey)).value
+        val cmp     = unescape(mapKey).compareTo(testString)
+        if (math.signum(testCmp) != math.signum(cmp)) {
+          sys.error(s"""$testCmp != $cmp for mapKey="$mapKey", testString="$testString"""")
+        }
+      }
+
+      for {
+        mapKey     <- testStrings
+        testString <- testStrings
+      } verify(mapKey, unescape(testString))
+    }
   }
 }

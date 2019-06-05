@@ -13,7 +13,7 @@ import java.lang.{Double => JDouble, Float => JFloat}
 import io.bullet.borer.{Borer, _}
 import io.bullet.borer.internal.Util
 
-import scala.annotation.switch
+import scala.annotation.{switch, tailrec}
 
 /**
   * Encapsulates the basic CBOR decoding logic.
@@ -167,29 +167,8 @@ final private[borer] class CborParser[In <: Input](val input: In, config: CborPa
       val byte      = input.readByte()
       val majorType = byte << 24 >>> 29
       val info      = byte & 0x1F
-      val uLong =
-        (info: @switch) match {
-          case 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 |
-              23 =>
-            info.toLong
-          case 24 =>
-            if (!input.prepareRead(1)) failUnexpectedEOI("8-bit integer")
-            input.readByte() & 0XFFL
-          case 25 =>
-            if (!input.prepareRead(2)) failUnexpectedEOI("16-bit integer")
-            input.readDoubleByteBigEndian() & 0XFFFFL
-          case 26 =>
-            if (!input.prepareRead(4)) failUnexpectedEOI("32-bit integer")
-            input.readQuadByteBigEndian() & 0XFFFFFFFFL
-          case 27 =>
-            if (!input.prepareRead(8)) failUnexpectedEOI("64-bit integer")
-            input.readOctaByteBigEndian()
-          case 31 if 2 <= majorType && majorType <= 5 || majorType == 7 =>
-            0L // handled specially
-          case 28 | 29 | 30 => failInvalidInput(s"Additional info `$info` is invalid (major type `$majorType`)")
-        }
-
-      (majorType: @switch) match {
+      val uLong     = readULong(majorType, info)
+      val result = (majorType: @switch) match {
         case 0 => decodePositiveInteger(uLong)
         case 1 => decodeNegativeInteger(uLong)
         case 2 => decodeByteString(uLong, info == 31)
@@ -199,11 +178,101 @@ final private[borer] class CborParser[In <: Input](val input: In, config: CborPa
         case 6 => decodeTag(uLong)
         case 7 => decodeExtra(info, uLong)
       }
+      input.releaseBeforeCursor()
+      result
     } else {
       receiver.onEndOfInput()
       DataItem.EndOfInput
     }
   }
+
+  def tryReadStringCompare(utf8Bytes: Input.FromByteArray): Int = {
+
+    def compareTextString(majorType: Int, info: Int): Int = {
+      val uLong = readULong(majorType, info)
+
+      @tailrec def rec(inputRemaining: Int): Int =
+        if (inputRemaining > 0) {
+          val inputOcta =
+            if (inputRemaining >= 8) input.readOctaByteBigEndian()
+            else input.readOctaByteBigEndianPadded(inputRemaining, 0L)
+          val testOcta = utf8Bytes.readOctaByteBigEndianPadded00()
+          val cmp      = java.lang.Long.compareUnsigned(inputOcta, testOcta)
+          if (cmp == 0) rec(inputRemaining - 8) else cmp
+        } else {
+          input.moveCursor(inputRemaining) // correct "overreading" the end of the textstring
+          uLong.toInt - utf8Bytes.byteArray.length
+        }
+
+      if (!Util.isUnsignedInt(uLong)) failOverflow("This decoder does not support map key TextStrings w/ size >= 2^31")
+      if (!input.prepareRead(uLong)) failUnexpectedEOI(s"Map key TextString with length $uLong")
+      rec(uLong.toInt)
+    }
+
+    @tailrec def compareTextStream(level: Int): Int =
+      if (input.prepareRead(1)) {
+        val byte = input.readByte()
+        if (byte == -1) { // BREAK
+          if (level > 0) compareTextStream(level - 1) else 0
+        } else {
+          val majorType = byte << 24 >>> 29
+          if (majorType == 3) {
+            val info = byte & 0x1F
+            if (info != 31) {
+              val cmp = compareTextString(majorType, info)
+              if (cmp == 0) compareTextStream(level) else cmp
+            } else compareTextStream(level + 1)
+          } else failInvalidInput(s"Expected TextString or BREAK but got major type $majorType")
+        }
+      } else failUnexpectedEOI("BREAK")
+
+    val mark = input.cursor
+    if (input.prepareRead(1)) {
+      val byte      = input.readByte()
+      val majorType = byte << 24 >>> 29
+      if (majorType == 3) {
+        val info = byte & 0x1F
+        val cmp =
+          if (info == 31) compareTextStream(0)
+          else compareTextString(majorType, info)
+        if (cmp == 0) {
+          input.releaseBeforeCursor()
+          0
+        } else {
+          input.resetTo(mark)
+          cmp
+        }
+      } else Int.MinValue
+    } else Int.MinValue
+  }
+
+  def tryReadBreak() = {
+    val break = input.readByteOr00() == -1
+    if (!break) input.moveCursor(-1)
+    break
+  }
+
+  private def readULong(majorType: Int, info: Int): Long =
+    (info: @switch) match {
+      case 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 |
+          23 =>
+        info.toLong
+      case 24 =>
+        if (!input.prepareRead(1)) failUnexpectedEOI("8-bit integer")
+        input.readByte() & 0XFFL
+      case 25 =>
+        if (!input.prepareRead(2)) failUnexpectedEOI("16-bit integer")
+        input.readDoubleByteBigEndian() & 0XFFFFL
+      case 26 =>
+        if (!input.prepareRead(4)) failUnexpectedEOI("32-bit integer")
+        input.readQuadByteBigEndian() & 0XFFFFFFFFL
+      case 27 =>
+        if (!input.prepareRead(8)) failUnexpectedEOI("64-bit integer")
+        input.readOctaByteBigEndian()
+      case 31 if 2 <= majorType && majorType <= 5 || majorType == 7 =>
+        0L // handled specially
+      case 28 | 29 | 30 => failInvalidInput(s"Additional info `$info` is invalid (major type `$majorType`)")
+    }
 
   private def failUnexpectedEOI(expected: String) = throw new Borer.Error.UnexpectedEndOfInput(lastPos, expected)
   private def failInvalidInput(msg: String)       = throw new Borer.Error.InvalidInputData(lastPos, msg)

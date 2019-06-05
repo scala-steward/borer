@@ -13,6 +13,7 @@ import java.math.BigInteger
 import utest._
 
 import scala.collection.immutable.{ListMap, TreeMap}
+import scala.util.control.NonFatal
 
 /**
   * Direct implementation of https://tools.ietf.org/html/rfc7049#appendix-A
@@ -221,6 +222,52 @@ abstract class AbstractCborSpec extends AbstractBorerSpec {
         "bf6346756ef563416d7421ff",
         ListMap("Fun" -> Right(true), "Amt" -> Left(-2)),
         Writer.Script(_ ~ MapStart ~ "Fun" ~ true ~ "Amt" ~ -2 ~ Break))
+    }
+
+    "tryReadMapKeyCompareUtf8Bytes" - {
+      class Foo(val value: Int)
+      def fooDec(testString: String) = Decoder[Foo] { r =>
+        val cmp = r.readMapHeader(1).tryReadStringCompare(testString getBytes "UTF8")
+        (if (cmp == 0) r else r.skipElement()).readNull()
+        new Foo(cmp)
+      }
+      def encoding(mapKey: String) = {
+        val writeKey = mapKey.split("/").toList match {
+          case x :: Nil => Writer.Script(_.writeString(x))
+          case x        => Writer.Script(_.writeStringIterator(x.iterator))
+        }
+        encode(Writer.Script(_.writeMapHeader(1).write(writeKey).writeNull()))
+      }
+
+      val testStrings = Seq(
+        "",
+        "foo",
+        "foobar",
+        "12345678",
+        "123456789",
+        "abc/defgfhgdf/tt",
+        "123456789012345678",
+        "1234567890123X45678",
+        "árvíztűrő ütvefúrógép")
+
+      def verify(mapKey: String, testString: String): Unit =
+        try {
+          val testStr = testString.filterNot(_ == '/')
+          val testCmp = decode[Foo](encoding(mapKey))(fooDec(testStr)).value
+          val cmp     = mapKey.compareTo(testStr)
+          if (math.signum(testCmp) != math.signum(cmp)) {
+            sys.error(s"""$testCmp != $cmp for mapKey="$mapKey", testString="$testString"""")
+          }
+        } catch {
+          case NonFatal(e) => throw e
+        }
+
+      verify("foo", "foo")
+
+      for {
+        mapKey     <- testStrings
+        testString <- testStrings
+      } verify(mapKey, testString)
     }
   }
 }

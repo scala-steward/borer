@@ -399,7 +399,7 @@ final private[borer] class JsonParser[In <: Input](val input: In, val config: Js
       // mask '\' characters: only '\' and 0xAF become 0x80, all others become < 0x80
       val bMask = (octa7bit ^ 0X2323232323232323L) + 0X0101010101010101L
 
-      // mask ctrl characters (0 - 0x1F): only ctrl chars and 8-bit chars get their high-bit set
+      // mask ctrl characters (0 - 0x1F): only ctrl chars and 0xA0 - 0xFF get their high-bit set
       var mask = (octa | 0X1F1F1F1F1F1F1F1FL) - 0X2020202020202020L
 
       // the special chars '"', '\', 8-bit (> 127) and ctrl chars become 0x80, all normal chars zero
@@ -528,7 +528,7 @@ final private[borer] class JsonParser[In <: Input](val input: In, val config: Js
       } else failSyntaxError("end of input")
 
     valueCursor = input.cursor
-    (state: @switch) match {
+    val result = (state: @switch) match {
       case EXPECT_ARRAY_VALUE  => parseValue(EXPECT_ARRAY_VALUE, EXPECT_ARRAY_BREAK)
       case EXPECT_MAP_KEY      => parseMapKey()
       case EXPECT_ARRAY_BREAK  => parseArrayBreak()
@@ -536,7 +536,145 @@ final private[borer] class JsonParser[In <: Input](val input: In, val config: Js
       case EXPECT_MAP_VALUE    => parseValue(EXPECT_MAP_KEY, EXPECT_MAP_BREAK)
       case EXPECT_VALUE        => parseValue(ILLEGAL_CHAR, EXPECT_END_OF_INPUT)
       case EXPECT_END_OF_INPUT => parseEndOfInput()
-      case ILLEGAL_CHAR        => failSyntaxError(-2, "End of Input")
+      case _                   => failSyntaxError(-2, "End of Input")
+    }
+    input.releaseBeforeCursor()
+    result
+  }
+
+  def tryReadStringCompare(utf8Bytes: Input.FromByteArray): Int = {
+    val mark = input.cursor
+
+    def failUnexpectedString(expected: String) =
+      throw new Borer.Error.InvalidInputData(
+        input.position(mark),
+        s"Invalid JSON syntax, expected $expected but got String")
+
+    @tailrec def rec(): Int = {
+      val testOcta = utf8Bytes.readOctaByteBigEndianPadded00()
+
+      // fetch 8 bytes (chars) at the same time with the first becoming the (left-most) MSB of the `octa` long
+      val octa     = input.readOctaByteBigEndianPadded00()
+      val octa7bit = octa & 0X7F7F7F7F7F7F7F7FL
+
+      // mask '"' characters: only '"' and 0xA2 become 0x80, all others become < 0x80
+      val qMask = (octa7bit ^ 0X5D5D5D5D5D5D5D5DL) + 0X0101010101010101L
+
+      // mask '\' characters: only '\' and 0xAF become 0x80, all others become < 0x80
+      val bMask = (octa7bit ^ 0X2323232323232323L) + 0X0101010101010101L
+
+      // mask ctrl characters (0 - 0x1F): only ctrl chars and 0xA0 - 0xFF get their high-bit set
+      var mask = (octa | 0X1F1F1F1F1F1F1F1FL) - 0X2020202020202020L
+
+      // the special chars '"', '\' and ctrl chars become 0x80, all other chars (incl. all 8-bit chars) zero
+      mask = (qMask | bMask | mask) & ~octa & 0X8080808080808080L
+
+      val nlz       = java.lang.Long.numberOfLeadingZeros(mask)
+      val charCount = nlz >> 3 // the number of "good" normal chars before the (potential) special char [0..8]
+      var stopChar  = 0
+      if (nlz < 64 && { stopChar = (octa << nlz >>> 56).toInt; stopChar == '"' }) {
+        val finalChars = octa & ~(-1L >>> nlz) // zero out the '"' and all following chars
+        val cmp        = java.lang.Long.compareUnsigned(finalChars, testOcta)
+        if (cmp == 0) {
+          val c = octa << nlz << 8 >>> 56 // the char after the '"' (or zero, if we haven't read it yet)
+          input.moveCursor(charCount - 6) // move the cursor to the 2nd char after the stopChar
+          val next =
+            if (c <= 0x20) {
+              input.moveCursor(-1)
+              nextCharAfterWhitespace()
+            } else c.toInt
+          state = (state: @switch) match {
+            case EXPECT_ARRAY_VALUE =>
+              if (next == ',') {
+                fetchNextChar(); EXPECT_ARRAY_VALUE
+              } else {
+                nextChar = next; EXPECT_ARRAY_BREAK
+              }
+            case EXPECT_MAP_KEY =>
+              if (next == ':') {
+                fetchNextChar(); EXPECT_MAP_VALUE
+              } else failSyntaxError("':'")
+            case EXPECT_ARRAY_BREAK => failUnexpectedString("']'")
+            case EXPECT_MAP_BREAK   => failUnexpectedString("'}'")
+            case EXPECT_MAP_VALUE =>
+              if (next == ',') {
+                fetchNextChar(); EXPECT_MAP_KEY
+              } else {
+                nextChar = next; EXPECT_MAP_BREAK
+              }
+            case EXPECT_VALUE        => nextChar = next; EXPECT_END_OF_INPUT
+            case EXPECT_END_OF_INPUT => failUnexpectedString("End of Input")
+            case _                   => failSyntaxError(-2, "End of Input")
+          }
+          input.releaseBeforeCursor()
+          0
+        } else {
+          input.resetTo(mark)
+          cmp
+        }
+      } else {
+        val cmp =
+          if (nlz == 64) java.lang.Long.compareUnsigned(octa, testOcta) // we have eight normal chars to compare
+          else if (stopChar == '\\') {
+            mask = ~(-1L >>> nlz) // zero out the '\' and all following chars
+            val cmp = java.lang.Long.compareUnsigned(octa & mask, testOcta & mask) // first compare the prefix
+            if (cmp == 0) {                       // if the prefix is identical we need to compare the escaped char
+              input.moveCursor(charCount - 7)     // move the cursor to the char after the backslash
+              utf8Bytes.moveCursor(charCount - 8) // move the cursor to the escaped char
+              val escapedChar: Int = (input.readByteOr00(): @switch) match {
+                case '"'  => '"'
+                case '/'  => '/'
+                case '\\' => '\\'
+                case 'b'  => '\b'
+                case 'f'  => '\f'
+                case 'n'  => '\n'
+                case 't'  => '\t'
+                case 'r'  => '\r'
+                case 'u' =>
+                  @inline def hd(c: Int): Int = HexDigits(c).toInt
+
+                  val q = input.readQuadByteBigEndianPaddedFF()
+                  val c = (hd(q >>> 24) << 12) | (hd(q << 8 >>> 24) << 8) | (hd(q << 16 >>> 24) << 4) | hd(q & 0xFF)
+                  if (c < 0) failIllegalEscapeSeq(-4)
+                  c
+                case _ => failIllegalEscapeSeq(-2)
+              }
+              val testChar = utf8Bytes.readByteOr00() & 0XFF
+              escapedChar - testChar
+            } else cmp
+          } else failSyntaxError(charCount - 8, "JSON string character") // stopChar char is a ctrl char
+        if (cmp != 0) {
+          input.resetTo(mark)
+          cmp
+        } else rec()
+      }
+    }
+
+    val lookahead = input.readOctaByteBigEndianPadded00()
+    input.resetTo(mark)
+
+    if (nextChar == '"') rec() else Int.MinValue
+  }
+
+  def tryReadBreak(): Boolean = {
+    def popLevel() = {
+      level -= 1
+      levelType >>>= 1
+      fetchNextChar()
+      state = if (level > 0) {
+        val tpe = levelType.toInt & 1
+        if (nextChar == ',') {
+          fetchNextChar()
+          tpe
+        } else 2 | tpe
+      } else EXPECT_END_OF_INPUT
+      true
+    }
+
+    (state: @switch) match {
+      case EXPECT_ARRAY_BREAK => if (nextChar == ']') popLevel() else failSyntaxError("',' or ']'")
+      case EXPECT_MAP_BREAK   => if (nextChar == '}') popLevel() else failSyntaxError("',' or '}'")
+      case _                  => false
     }
   }
 

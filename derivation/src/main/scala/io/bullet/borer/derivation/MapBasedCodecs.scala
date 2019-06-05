@@ -111,20 +111,25 @@ object MapBasedCodecs {
           if (constructorIsPrivate)
             error(s"Cannot derive Decoder[$tpe] because the primary constructor of `$tpe` is private")
 
+          def decName(p: CaseParam)       = TermName(s"d${p.index}")
+          def varName(p: CaseParam)       = TermName(s"p${p.index}")
+          def utf8BytesName(p: CaseParam) = TermName(s"utf8Bytes${p.index}")
+          def expected(s: String)         = s"$s for decoding an instance of type `$tpe`"
+
+          def readField(p: CaseParam) = {
+            val tpe = p.paramType.tpe
+            if (isBasicType(tpe)) q"r.${TermName(s"read$tpe")}()" else q"r.read[$tpe]()(${decName(p)})"
+          }
+
           val arity         = params.size
           val keysAndParams = new Array[(Key, CaseParam)](arity)
           params.foreach(p => keysAndParams(p.index) = p.key() -> p)
           val keysAndParamsSorted = keysAndParams.clone()
           java.util.Arrays.sort(keysAndParamsSorted.asInstanceOf[Array[Object]], KeyPairOrdering)
 
-          def decName(p: CaseParam) = TermName(s"d${p.index}")
-          def varName(p: CaseParam) = TermName(s"p${p.index}")
-          def expected(s: String)   = s"$s for decoding an instance of type `$tpe`"
-
-          def readField(p: CaseParam) = {
-            val tpe = p.paramType.tpe
-            if (isBasicType(tpe)) q"r.${TermName(s"read$tpe")}()" else q"r.read[$tpe]()(${decName(p)})"
-          }
+          val utf8BytesDefs = keysAndParams.iterator.collect {
+            case (Key.String(x), p) => q"""private[this] val ${utf8BytesName(p)} = ${literal(x)}.getBytes("UTF8")"""
+          }.toList
 
           val nonBasicParams = params.filterNot(_.isBasicType)
           val fieldDecDefs = nonBasicParams.map { p =>
@@ -170,39 +175,37 @@ object MapBasedCodecs {
 
           val maskAsArgs = if (arity <= 64) q"mask" :: Nil else q"mask0" :: q"mask1" :: Nil
 
-          val fieldVarDefs: List[Tree] = keysAndParams.map {
-            case (key, p) =>
-              val defaultValue = p.defaultValueMethod.getOrElse(q"null.asInstanceOf[${p.paramType.tpe}]")
-              q"""var ${varName(p)} = if (rem != 0 && ${r("tryRead", key)}) {
-                  ${setMaskBit(p)}
-                  rem -= 1
-                  ${readField(p)}
-                } else $defaultValue"""
+          val fieldTryReadCompare = keysAndParams.map {
+            case (Key.String(_), p) => q"r.tryReadStringCompare(${utf8BytesName(p)})"
+            case (Key.Long(x), _)   => q"r.tryReadLongCompare(${literal(x)})"
+          }
+
+          val fieldVarDefs: List[Tree] = params.map { p =>
+            val defaultValue = p.defaultValueMethod.getOrElse(q"null.asInstanceOf[${p.paramType.tpe}]")
+            q"""var ${varName(p)} = if (rem != 0 && (${fieldTryReadCompare(p.index)} == 0)) {
+                ${setMaskBit(p)}
+                rem -= 1
+                ${readField(p)}
+              } else $defaultValue"""
           }(collection.breakOut)
 
           def readFields(start: Int, end: Int): Tree =
-            if (start < arity) {
-              def readAndAssign(key: Key, p: CaseParam) =
-                q"""if (${maskBitSet(p)}) failDuplicate(${literal(key.value)})
-                    ${varName(p)} = ${readField(p)}
-                    ${setMaskBit(p)}"""
-              val body = {
-                if (start < end) {
-                  val mid      = (start + end) >> 1
-                  val (key, p) = keysAndParamsSorted(mid)
-                  q"""val cmp = ${r("tryRead", key, "Compare")}
+            if (start < end) {
+              val mid        = (start + end) >> 1
+              val (key, p)   = keysAndParamsSorted(mid)
+              val methodName = TermName(s"readFields_${start}_$end")
+              q"""def $methodName(): Unit = {
+                  val cmp = ${fieldTryReadCompare(p.index)}
                   if (cmp < 0) ${readFields(start, mid)}
                   else if (cmp > 0) ${readFields(mid + 1, end)}
-                  else ${readAndAssign(key, p)}"""
-                } else {
-                  val (key, p) = keysAndParamsSorted(start)
-                  q"if (${r("tryRead", key)}) ${readAndAssign(key, p)} else skipEntry()"
+                  else {
+                    if (${maskBitSet(p)}) failDuplicate(${literal(key.value)})
+                    ${varName(p)} = ${readField(p)}
+                    ${setMaskBit(p)}
+                  }
                 }
-              }
-              val methodName = TermName(s"readFields_${start}_$end")
-              q"""def $methodName(): Unit = $body
-                  $methodName()"""
-            } else q"skipEntry()"
+                $methodName()"""
+            } else q"r.skipTwoElements()"
 
           val typeName    = tpe.typeSymbol.name.decodedName.toString
           val decoderName = TypeName(s"${typeName}Decoder")
@@ -239,21 +242,21 @@ object MapBasedCodecs {
           }
 
           q"""final class $decoderName {
+                ..$utf8BytesDefs
                 ..$fieldDecDefs
                 def read(r: _root_.io.bullet.borer.Reader): $tpe = {
                   def failDuplicate(k: Any) =
                     throw new _root_.io.bullet.borer.Borer.Error.InvalidInputData(r.position,
                       StringContext("Duplicate map key `", ${expected("` encountered during")}).s(k))
                   $failMissingDef
-                  def skipEntry(): Unit = r.skipElement().skipElement()
                   def readObject(remaining: scala.Int): $tpe = {
                     var rem = remaining
                     ..$maskDef
                     ..$fieldVarDefs
-                    while (rem > 0 || rem < 0 && !r.tryReadBreak()) {
+                    while (rem > 0 || rem < 0 && !r.tryReadBreakX()) {
                       if ($maskIncomplete) {
                         ..${readFields(0, arity)}
-                      } else skipEntry()
+                      } else r.skipTwoElements()
                       rem -= 1
                     }
                     $construct
@@ -279,12 +282,20 @@ object MapBasedCodecs {
         def deriveForSealedTrait(tpe: Type, subTypes: List[SubType]) = {
           val typeIdsAndSubTypes: Array[(Key, SubType)] = getTypeIds(tpe, subTypes).zip(subTypes)
           java.util.Arrays.sort(typeIdsAndSubTypes.asInstanceOf[Array[Object]], KeyPairOrdering)
+          def utf8BytesName(sub: SubType) = TermName(s"utf8Bytes${sub.index}")
+          val utf8BytesDefs = typeIdsAndSubTypes.iterator.collect {
+            case (Key.String(x), sub) => q"""val ${utf8BytesName(sub)} = ${literal(x)}.getBytes("UTF8")"""
+          }.toList
 
           def rec(start: Int, end: Int): Tree =
             if (start < end) {
               val mid           = (start + end) >> 1
               val (typeId, sub) = typeIdsAndSubTypes(mid)
-              q"""val cmp = ${r("tryRead", typeId, "Compare")}
+              val cmp = typeId match {
+                case Key.String(_) => q"r.tryReadStringCompare(${utf8BytesName(sub)})"
+                case Key.Long(x)   => q"r.tryReadLongCompare(${literal(x)})"
+              }
+              q"""val cmp = $cmp
                   if (cmp < 0) ${rec(start, mid)}
                   else if (cmp > 0) ${rec(mid + 1, end)}
                   else r.read[${sub.tpe}]()"""
@@ -295,7 +306,8 @@ object MapBasedCodecs {
 
           def expected(s: String) = s"$s for decoding an instance of type `$tpe`"
 
-          q"""_root_.io.bullet.borer.Decoder { r =>
+          q"""..$utf8BytesDefs
+              _root_.io.bullet.borer.Decoder { r =>
                 def fail() = r.unexpectedDataItem(${s"type id key for subtype of `$tpe`"})
                 def readTypeIdAndValue(): $tpe = ${rec(0, typeIdsAndSubTypes.length)}
 

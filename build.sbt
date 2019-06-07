@@ -135,8 +135,8 @@ lazy val macroParadise =
 
 /////////////////////// DEPENDENCIES /////////////////////////
 
-val `akka-actor`       = Def.setting("com.typesafe.akka"     %%% "akka-actor"          % "2.5.23")
-val `scodec-bits`      = Def.setting("org.scodec"            %%% "scodec-bits"         % "1.1.11")
+val `akka-actor`       = Def.setting("com.typesafe.akka"     %%% "akka-actor"          % "2.5.22")
+val `scodec-bits`      = Def.setting("org.scodec"            %%% "scodec-bits"         % "1.1.10")
 val utest              = Def.setting("com.lihaoyi"           %%% "utest"               % "0.6.7"            % "test")
 val `scala-compiler`   = Def.setting("org.scala-lang"        %  "scala-compiler"       % scalaVersion.value % "provided")
 val `scala-reflect`    = Def.setting("org.scala-lang"        %  "scala-reflect"        % scalaVersion.value % "provided")

@@ -25,7 +25,7 @@ final private[borer] class CborRenderer(var out: Output) extends Receiver.Render
   def onUndefined(): Unit =
     out = out.writeAsByte(0xF7)
 
-  def onBool(value: Boolean): Unit =
+  def onBoolean(value: Boolean): Unit =
     out = out.writeAsByte(if (value) 0xF5 else 0xF4)
 
   def onInt(value: Int): Unit =
@@ -58,7 +58,7 @@ final private[borer] class CborRenderer(var out: Output) extends Receiver.Render
   def onString(value: String): Unit =
     onText(value getBytes UTF_8)
 
-  def onChars(length: Int, buffer: Array[Char]): Unit =
+  def onChars(buffer: Array[Char], length: Int): Unit =
     onString(new String(buffer, 0, length))
 
   def onText[Bytes](value: Bytes)(implicit byteAccess: ByteAccess[Bytes]): Unit =

@@ -45,27 +45,69 @@ object Decoder extends LowPrioDecoders {
   def apply[T](decoder: Decoder[T]): Decoder[T] = decoder
 
   /**
-    * Simple macro shortening `Decoder.from(Foo.apply _)` to `Decoder.forCaseClass[Foo]`
+    * Simple macro creating a [[Decoder]] that converts an array of values to an instance of case class `T`.
+    * Decoders for all members of [[T]] must be implicitly available at the call site of `forCaseClass`.
+    *
+    * NOTE: If `T` is unary (i.e. only has a single member) then the member value is expected in an unwrapped form,
+    * i.e. without the array container.
     */
   def forCaseClass[T]: Decoder[T] = macro Macros.decoderForCaseClass[T]
+
+  /**
+    * Decoder for unary case classes wrapping a single member of type [[T]].
+    * Same as `forCaseClass[T]` but doesn't compile if [[T]] is not a unary case class.
+    */
+  def forUnaryCaseClass[T]: Decoder[T] = macro Macros.decoderForUnaryCaseClass[T]
 
   implicit final class DecoderOps[A](val underlying: Decoder[A]) extends AnyVal {
     def map[B](f: A => B): Decoder[B]                     = Decoder(r => f(underlying.read(r)))
     def mapWithReader[B](f: (Reader, A) => B): Decoder[B] = Decoder(r => f(r, underlying.read(r)))
+
+    def withDefaultValue(defaultValue: A): Decoder[A] =
+      underlying match {
+        case x: Decoder.DefaultValueAware[A] => x withDefaultValue defaultValue
+        case x                               => x
+      }
   }
 
   implicit def fromCodec[T](implicit codec: Codec[T]): Decoder[T] = codec.decoder
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-  implicit val forNull: Decoder[Null]             = Decoder(_.readNull())
-  implicit val forBoolean: Decoder[Boolean]       = Decoder(_.readBoolean())
-  implicit val forInt: Decoder[Int]               = Decoder(_.readInt())
-  implicit val forLong: Decoder[Long]             = Decoder(_.readLong())
-  implicit val forFloat: Decoder[Float]           = Decoder(_.readFloat())
-  implicit val forDouble: Decoder[Double]         = Decoder(_.readDouble())
-  implicit val forString: Decoder[String]         = Decoder(_.readString())
-  implicit val forByteArray: Decoder[Array[Byte]] = Decoder(_.readByteArray())
+  implicit val forNull: Decoder[Null]       = Decoder(_.readNull())
+  implicit val forBoolean: Decoder[Boolean] = Decoder(_.readBoolean())
+  implicit val forInt: Decoder[Int]         = Decoder(_.readInt())
+  implicit val forLong: Decoder[Long]       = Decoder(_.readLong())
+  implicit val forFloat: Decoder[Float]     = Decoder(_.readFloat())
+  implicit val forDouble: Decoder[Double]   = Decoder(_.readDouble())
+  implicit val forString: Decoder[String]   = Decoder(_.readString())
+
+  implicit val forByteArray: Decoder[Array[Byte]] =
+    Decoder { r =>
+      if (r.hasByteArray) {
+        r.readByteArray()
+      } else if (r.hasArrayHeader) {
+        val size = r.readArrayHeader()
+        if (size > 0) {
+          if (size <= Int.MaxValue) {
+            val intSize = size.toInt
+            val array   = new Array[Byte](intSize)
+
+            @tailrec def rec(ix: Int): Array[Byte] =
+              if (ix < intSize) {
+                array(ix) = r.readByte()
+                rec(ix + 1)
+              } else array
+
+            rec(0)
+          } else r.overflow(s"Cannot deserialize ByteArray with size $size (> Int.MaxValue)")
+        } else Array.emptyByteArray
+      } else if (r.tryReadArrayStart()) {
+        if (!r.tryReadBreak()) {
+          r.readUntilBreak(new mutable.ArrayBuilder.ofByte)(_ += r.readByte()).result()
+        } else Array.emptyByteArray
+      } else r.unexpectedDataItem(expected = "ByteString or Array of bytes")
+    }
 
   implicit val forChar: Decoder[Char] = forInt.mapWithReader { (r, int) =>
     if ((int >> 16) != 0) r.validationFailure(s"Cannot convert int value $int to Char")

@@ -16,7 +16,7 @@ abstract class Receiver {
 
   def onNull(): Unit
   def onUndefined(): Unit
-  def onBool(value: Boolean): Unit
+  def onBoolean(value: Boolean): Unit
 
   def onInt(value: Int): Unit
   def onLong(value: Long): Unit
@@ -31,7 +31,7 @@ abstract class Receiver {
   def onBytesStart(): Unit
 
   def onString(value: String): Unit
-  def onChars(length: Int, buffer: Array[Char]): Unit
+  def onChars(buffer: Array[Char], length: Int): Unit
   def onText[Bytes: ByteAccess](value: Bytes): Unit
   def onTextStart(): Unit
 
@@ -61,17 +61,17 @@ object Receiver {
   /**
     * Common parent type of [[io.bullet.borer.cbor.CborParser]] and [[io.bullet.borer.json.JsonParser]]
     */
-  abstract class Parser[In <: Input] {
+  abstract class Parser[Bytes] extends Input.PaddingProvider[Bytes] {
 
     /**
       * The [[Input]] the parser is parsing from.
       */
-    def input: In
+    def input: Input[Bytes]
 
     /**
       * The index of the first byte of the value that was produced by the last call to `pull`.
       */
-    def lastCursor: Long
+    def valueIndex: Long
 
     /**
       * Reads the next data item from the input and sends it to the given [[Receiver]].
@@ -81,7 +81,7 @@ object Receiver {
     def pull(receiver: Receiver): Int
   }
 
-  type ParserCreator[In <: Input, Config] = (In, Config) => Parser[In]
+  type ParserCreator[Bytes, Config] = (Input[Bytes], ByteAccess[Bytes], Config) => Parser[Bytes]
 
   type Wrapper[Config] = (Receiver, Config) => Receiver
   private[this] val _nopWrapper: Wrapper[Any] = (receiver, _) => receiver

@@ -23,7 +23,7 @@ final private[borer] class Receptacle extends Receiver with java.lang.Cloneable 
   private[this] var _double: Double = _
   private[this] var _obj: Any       = _
 
-  private[this] var _bytesAccess: ByteAccess[Any] = _
+  private[this] var _byteAccess: ByteAccess[Any] = _
 
   @inline def boolValue: Boolean        = _bool
   @inline def intValue: Int             = _int
@@ -35,13 +35,13 @@ final private[borer] class Receptacle extends Receiver with java.lang.Cloneable 
   @inline def tagValue: Tag             = _obj.asInstanceOf[Tag]
 
   @inline def getBytes[Bytes](implicit byteAccess: ByteAccess[Bytes]): Bytes =
-    byteAccess.convert(_obj)(_bytesAccess)
+    byteAccess.convert(_obj)(_byteAccess)
 
   def onNull(): Unit = ()
 
   def onUndefined(): Unit = ()
 
-  def onBool(value: Boolean): Unit = _bool = value
+  def onBoolean(value: Boolean): Unit = _bool = value
 
   def onInt(value: Int): Unit = _int = value
 
@@ -62,21 +62,21 @@ final private[borer] class Receptacle extends Receiver with java.lang.Cloneable 
 
   def onBytes[Bytes](value: Bytes)(implicit byteAccess: ByteAccess[Bytes]): Unit = {
     _obj = value
-    _bytesAccess = byteAccess.asInstanceOf[ByteAccess[Any]]
+    _byteAccess = byteAccess.asInstanceOf[ByteAccess[Any]]
   }
 
   def onBytesStart(): Unit = ()
 
   def onString(value: String): Unit = _obj = value
 
-  def onChars(length: Int, buffer: Array[Char]): Unit = {
+  def onChars(buffer: Array[Char], length: Int): Unit = {
     _obj = buffer
     _int = length
   }
 
   def onText[Bytes](value: Bytes)(implicit byteAccess: ByteAccess[Bytes]): Unit = {
     _obj = value
-    _bytesAccess = byteAccess.asInstanceOf[ByteAccess[Any]]
+    _byteAccess = byteAccess.asInstanceOf[ByteAccess[Any]]
   }
 
   def onTextStart(): Unit = ()

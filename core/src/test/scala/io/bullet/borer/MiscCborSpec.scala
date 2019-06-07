@@ -19,8 +19,8 @@ object MiscCborSpec extends AbstractBorerSpec {
   case class Bar(foo: Foo, optFoo: Option[Foo], stringSeq: Seq[String])
 
   // we cannot use `Codec.deriveForCaseClass` since we are in the same compilation module
-  implicit val fooCodec = Codec(Encoder.from(Foo.unapply _), Decoder.from(Foo.apply _))
-  implicit val barCodec = Codec(Encoder.from(Bar.unapply _), Decoder.from(Bar.apply _))
+  implicit val fooCodec = Codec.forCaseClass[Foo]
+  implicit val barCodec = Codec.forCaseClass[Bar]
 
   val tests = Tests {
 
@@ -37,14 +37,14 @@ object MiscCborSpec extends AbstractBorerSpec {
 
     "Zero-Member Case Class" - {
       case class Qux()
-      implicit val quxCodec = Codec(Encoder.from(Qux.unapply _), Decoder.from(Qux.apply _))
+      implicit val quxCodec = Codec.forCaseClass[Qux]
 
       roundTrip("80", Qux())
     }
 
     "Single-Member Case Class" - {
       case class Qux(i: Int)
-      implicit val quxCodec = Codec(Encoder.from(Qux.unapply _), Decoder.from(Qux.apply _))
+      implicit val quxCodec = Codec.forCaseClass[Qux]
 
       roundTrip("182a", Qux(42))
     }
@@ -111,6 +111,12 @@ object MiscCborSpec extends AbstractBorerSpec {
 
     "Int Array" - {
       roundTrip("8301182a190159", Array(1, 42, 345))
+    }
+
+    "Byte Array" - {
+      verifyEncoding(hexBytes("11223344"), "4411223344")
+      verifyDecoding("4411223344", hexBytes("11223344"))
+      verifyDecoding("8411182218331844", hexBytes("11223344"))
     }
 
     "Illegal Map Termination Error" - {

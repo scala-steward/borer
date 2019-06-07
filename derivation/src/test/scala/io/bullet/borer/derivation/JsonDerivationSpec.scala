@@ -16,8 +16,10 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
   import Dom._
 
   def encode[T: Encoder](value: T): String =
-    Json.encode(value).withConfig(Json.EncodingConfig.default.copy(bufferSize = 13)).toUtf8String
+    Json.encode(value).withConfig(Json.EncodingConfig(bufferSize = 13)).toUtf8String
+
   def decode[T: Decoder](encoded: String): T = Json.decode(encoded getBytes StandardCharsets.UTF_8).to[T].value
+
   def tryDecode[T: Decoder](encoded: String) = Json.decode(encoded getBytes StandardCharsets.UTF_8).to[T].valueTry
 
   def arrayBasedFooDom =
@@ -37,7 +39,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
         ArrayElem.Unsized(IntElem(0), IntElem(0), IntElem(255), IntElem(255))
       ))
 
-  def arrayBasedMissingElemErrorMsg = "Cannot convert int value -10000 to Byte (input position 4)"
+  def arrayBasedMissingElemErrorMsg = "Expected Byte but got Int (input position 4)"
 
   def mapBasedFooDom =
     MapElem.Unsized(
@@ -59,7 +61,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
   // format: OFF
   def mapBased100Dom =
     MapElem.Unsized(
-      "x00" -> BoolElem(false),
+      "x00" -> BooleanElem(false),
       "x01" -> IntElem(120),
       "x02" -> IntElem(66),
       "x03" -> IntElem(-10000),
@@ -69,7 +71,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
       "x07" -> DoubleElem(26.8),
       "x08" -> StringElem("borer"),
       "x09" -> MapElem.Unsized("red" -> IntElem(0), "green" -> IntElem(0), "blue" -> IntElem(0), "alpha" -> IntElem(255)),
-      "x10" -> BoolElem(false),
+      "x10" -> BooleanElem(false),
       "x11" -> IntElem(120),
       "x12" -> IntElem(66),
       "x13" -> IntElem(-10000),
@@ -79,7 +81,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
       "x17" -> DoubleElem(26.8),
       "x18" -> StringElem("borer"),
       "x19" -> MapElem.Unsized("red" -> IntElem(0), "green" -> IntElem(0), "blue" -> IntElem(0), "alpha" -> IntElem(255)),
-      "x20" -> BoolElem(false),
+      "x20" -> BooleanElem(false),
       "x21" -> IntElem(120),
       "x22" -> IntElem(66),
       "x23" -> IntElem(-10000),
@@ -89,7 +91,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
       "x27" -> DoubleElem(26.8),
       "x28" -> StringElem("borer"),
       "x29" -> MapElem.Unsized("red" -> IntElem(0), "green" -> IntElem(0), "blue" -> IntElem(0), "alpha" -> IntElem(255)),
-      "x30" -> BoolElem(false),
+      "x30" -> BooleanElem(false),
       "x31" -> IntElem(120),
       "x32" -> IntElem(66),
       "x33" -> IntElem(-10000),
@@ -99,7 +101,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
       "x37" -> DoubleElem(26.8),
       "x38" -> StringElem("borer"),
       "x39" -> MapElem.Unsized("red" -> IntElem(0), "green" -> IntElem(0), "blue" -> IntElem(0), "alpha" -> IntElem(255)),
-      "x40" -> BoolElem(false),
+      "x40" -> BooleanElem(false),
       "x41" -> IntElem(120),
       "x42" -> IntElem(66),
       "x43" -> IntElem(-10000),
@@ -109,7 +111,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
       "x47" -> DoubleElem(26.8),
       "x48" -> StringElem("borer"),
       "x49" -> MapElem.Unsized("red" -> IntElem(0), "green" -> IntElem(0), "blue" -> IntElem(0), "alpha" -> IntElem(255)),
-      "x50" -> BoolElem(false),
+      "x50" -> BooleanElem(false),
       "x51" -> IntElem(120),
       "x52" -> IntElem(66),
       "x53" -> IntElem(-10000),
@@ -119,7 +121,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
       "x57" -> DoubleElem(26.8),
       "x58" -> StringElem("borer"),
       "x59" -> MapElem.Unsized("red" -> IntElem(0), "green" -> IntElem(0), "blue" -> IntElem(0), "alpha" -> IntElem(255)),
-      "x60" -> BoolElem(false),
+      "x60" -> BooleanElem(false),
       "x61" -> IntElem(120),
       "x62" -> IntElem(66),
       "x63" -> IntElem(-10000),
@@ -129,7 +131,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
       "x67" -> DoubleElem(26.8),
       "x68" -> StringElem("borer"),
       "x69" -> MapElem.Unsized("red" -> IntElem(0), "green" -> IntElem(0), "blue" -> IntElem(0), "alpha" -> IntElem(255)),
-      "x70" -> BoolElem(false),
+      "x70" -> BooleanElem(false),
       "x71" -> IntElem(120),
       "x72" -> IntElem(66),
       "x73" -> IntElem(-10000),
@@ -139,7 +141,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
       "x77" -> DoubleElem(26.8),
       "x78" -> StringElem("borer"),
       "x79" -> MapElem.Unsized("red" -> IntElem(0), "green" -> IntElem(0), "blue" -> IntElem(0), "alpha" -> IntElem(255)),
-      "x80" -> BoolElem(false),
+      "x80" -> BooleanElem(false),
       "x81" -> IntElem(120),
       "x82" -> IntElem(66),
       "x83" -> IntElem(-10000),
@@ -149,7 +151,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
       "x87" -> DoubleElem(26.8),
       "x88" -> StringElem("borer"),
       "x89" -> MapElem.Unsized("red" -> IntElem(0), "green" -> IntElem(0), "blue" -> IntElem(0), "alpha" -> IntElem(255)),
-      "x90" -> BoolElem(false),
+      "x90" -> BooleanElem(false),
       "x91" -> IntElem(120),
       "x92" -> IntElem(66),
       "x93" -> IntElem(-10000),
@@ -168,7 +170,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
       ArrayElem
         .Unsized(StringElem("TheCAT"), ArrayElem.Unsized(DoubleElem(1.0f), StringElem("none"), StringElem("there"))),
       ArrayElem.Unsized(StringElem("Dog"), ArrayElem.Unsized(IntElem(4), StringElem("Lolle"))),
-      ArrayElem.Unsized(IntElem(42), BoolElem.True))
+      ArrayElem.Unsized(IntElem(42), BooleanElem.True))
 
   def mapBasedAnimalsDom =
     ArrayElem.Unsized(
@@ -177,5 +179,7 @@ object JsonDerivationSpec extends DerivationSpec(Json) {
         "TheCAT" -> MapElem
           .Sized("weight" -> Float16Elem(1.0f), "color" -> StringElem("none"), "home" -> StringElem("there"))),
       MapElem.Sized("Dog"       -> MapElem.Sized("age"  -> IntElem(4), "name" -> StringElem("Lolle"))),
-      MapElem.Sized(IntElem(42) -> MapElem.Sized("tail" -> BoolElem.True)))
+      MapElem.Sized(IntElem(42) -> MapElem.Sized("tail" -> BooleanElem.True)))
+
+  def recursiveBoxEncoded = """{"x":{"x":{}}}"""
 }

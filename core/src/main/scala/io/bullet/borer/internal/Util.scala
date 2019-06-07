@@ -28,23 +28,24 @@ object Util {
     if (isJS && onlyDigits(s.length - 1)) s + ".0" else s
   }
 
-  @inline def requireNonNegative(value: Int, name: String): Int = {
-    requireNonNegative(value.toLong, name)
-    value
-  }
+  @inline def requireNonNegative(value: Int, name: String): Int = requireNonNegative(value.toLong, name).toInt
 
   @inline def requireNonNegative(value: Long, name: String): Long =
     if (value < 0) throw new IllegalArgumentException(s"$name must be >= 0, but was $value")
     else value
 
-  @inline def requirePositive(value: Int, name: String): Int = {
-    requirePositive(value.toLong, name)
-    value
-  }
+  @inline def requirePositive(value: Int, name: String): Int = requirePositive(value.toLong, name).toInt
 
   @inline def requirePositive(value: Long, name: String): Long =
     if (value <= 0) throw new IllegalArgumentException(s"$name must be > 0, but was $value")
     else value
+
+  @inline def requireRange(value: Int, min: Int, max: Int, name: String): Int =
+    requireRange(value.toLong, min.toLong, max.toLong, name).toInt
+
+  @inline def requireRange(value: Long, min: Long, max: Long, name: String): Long =
+    if (min <= value && value <= max) value
+    else throw new IllegalArgumentException(s"$name must be in the range [$min, $max], but was $value")
 
   private[this] val _identityFunc = (x: Any) => x
   def identityFunc[T]: T => T     = _identityFunc.asInstanceOf[T => T]
@@ -102,5 +103,20 @@ object Util {
       bytes(ix) = (~bytes(ix).toInt).toByte; rec(ix + 1)
     }
     rec(0)
+  }
+
+  implicit final class RichIterator[T](val underlying: Iterator[T]) extends AnyVal {
+
+    def +:(element: T): Iterator[T] =
+      new Iterator[T] {
+        private[this] var pending = true
+        def hasNext               = pending || underlying.hasNext
+
+        def next() =
+          if (pending) {
+            pending = false
+            element
+          } else underlying.next()
+      }
   }
 }

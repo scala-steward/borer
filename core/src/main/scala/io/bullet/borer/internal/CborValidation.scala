@@ -75,10 +75,10 @@ object CborValidation {
       _target.onUndefined()
     }
 
-    def onBool(value: Boolean): Unit = {
-      checkAllowed(DI.Bool)
+    def onBoolean(value: Boolean): Unit = {
+      checkAllowed(DI.Boolean)
       count()
-      _target.onBool(value)
+      _target.onBoolean(value)
     }
 
     def onInt(value: Int): Unit = {
@@ -141,10 +141,10 @@ object CborValidation {
       _target.onString(value)
     }
 
-    def onChars(length: Int, buffer: Array[Char]): Unit = {
+    def onChars(buffer: Array[Char], length: Int): Unit = {
       checkAllowed(DI.Chars)
       count()
-      _target.onChars(length, buffer)
+      _target.onChars(buffer, length)
     }
 
     def onText[Bytes: ByteAccess](value: Bytes): Unit = {

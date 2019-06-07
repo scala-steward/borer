@@ -18,6 +18,7 @@ lazy val commonSettings = Seq(
     "-feature",
     "-language:_",
     "-unchecked",
+    "-target:jvm-1.8",
     "-Xlint:_,-missing-interpolator",
     "-Ywarn-dead-code",
     "-Ywarn-numeric-widen",
@@ -60,6 +61,18 @@ lazy val commonSettings = Seq(
 
   testFrameworks += new TestFramework("utest.runner.Framework"),
   initialCommands in console := """import io.bullet.borer._""",
+
+  commands += Command.command("openCoverageReport") { state =>
+    val uri = s"file://${Project.extract(state).get(crossTarget)}/scoverage-report/index.html"
+    state.log.info(s"Opening browser at $uri ...")
+    java.awt.Desktop.getDesktop.browse(new java.net.URI(uri))
+    state
+  },
+
+  commands += Command.command("testCoverage") { state =>
+    val cmds = List("clean", "coverage", "test", "coverageReport", "openCoverageReport").map(Exec(_, None))
+    state.copy(remainingCommands = cmds ::: state.remainingCommands)
+  }
 )
 
 lazy val crossSettings = Seq(
@@ -122,12 +135,11 @@ lazy val macroParadise =
 
 /////////////////////// DEPENDENCIES /////////////////////////
 
-val `akka-actor`       = Def.setting("com.typesafe.akka"     %%% "akka-actor"          % "2.5.22")
-val `scodec-bits`      = Def.setting("org.scodec"            %%% "scodec-bits"         % "1.1.10")
+val `akka-actor`       = Def.setting("com.typesafe.akka"     %%% "akka-actor"          % "2.5.23")
+val `scodec-bits`      = Def.setting("org.scodec"            %%% "scodec-bits"         % "1.1.11")
 val utest              = Def.setting("com.lihaoyi"           %%% "utest"               % "0.6.7"            % "test")
 val `scala-compiler`   = Def.setting("org.scala-lang"        %  "scala-compiler"       % scalaVersion.value % "provided")
 val `scala-reflect`    = Def.setting("org.scala-lang"        %  "scala-reflect"        % scalaVersion.value % "provided")
-val `javax-annotation` = Def.setting("javax.annotation"      %  "javax.annotation-api" % "1.3.2"            % "test")
 
 /////////////////////// PROJECTS /////////////////////////
 
@@ -136,7 +148,6 @@ lazy val borer = project.in(file("."))
   .aggregate(akka)
   //.aggregate(scodecJVM, scodecJS)
   .aggregate(scodecJVM)
-  .aggregate(magnoliaJVM, magnoliaJS)
   .aggregate(derivationJVM, derivationJS)
   .settings(commonSettings)
   .settings(publishingSettings)
@@ -197,8 +208,8 @@ lazy val scodec = crossProject(JSPlatform, JVMPlatform)
   )
   .jsSettings(scalajsSettings: _*)
 
-lazy val derivationJVM = derivation.jvm.dependsOn(magnoliaJVM, coreJVM % "compile->compile;test->test")
-lazy val derivationJS  = derivation.js.dependsOn(magnoliaJS, coreJS % "compile->compile;test->test")
+lazy val derivationJVM = derivation.jvm.dependsOn(coreJVM % "compile->compile;test->test")
+lazy val derivationJS  = derivation.js.dependsOn(coreJS % "compile->compile;test->test")
 lazy val derivation = crossProject(JSPlatform, JVMPlatform)
   .withoutSuffixFor(JVMPlatform)
   .crossType(CrossType.Pure)
@@ -209,27 +220,6 @@ lazy val derivation = crossProject(JSPlatform, JVMPlatform)
   .settings(releaseSettings)
   .settings(
     moduleName := "borer-derivation",
-    libraryDependencies ++= Seq(`scala-reflect`.value, utest.value),
-  )
-  .jsSettings(scalajsSettings: _*)
-
-lazy val magnoliaJVM = magnolia.jvm
-lazy val magnoliaJS  = magnolia.js
-lazy val magnolia = crossProject(JSPlatform, JVMPlatform)
-  .withoutSuffixFor(JVMPlatform)
-  .crossType(CrossType.Pure)
-  .settings(crossSettings)
-  .settings(commonSettings)
-  .settings(publishingSettings)
-  .settings(releaseSettings)
-  .settings(
-    moduleName := "borer-magnolia",
-    macroParadise,
-    libraryDependencies ++= Seq(
-      `scala-compiler`.value,
-      `scala-reflect`.value,
-      utest.value,
-      `javax-annotation`.value
-    )
+    libraryDependencies ++= Seq(`scala-compiler`.value, `scala-reflect`.value, utest.value),
   )
   .jsSettings(scalajsSettings: _*)

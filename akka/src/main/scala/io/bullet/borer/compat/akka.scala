@@ -11,8 +11,8 @@ package io.bullet.borer.compat
 import java.nio.charset.StandardCharsets
 import java.nio.ByteBuffer
 
-import io.bullet.borer.{ByteAccess, _}
 import _root_.akka.util.ByteString
+import io.bullet.borer.{ByteAccess, _}
 
 object akka {
 
@@ -69,23 +69,24 @@ object akka {
   /**
     * [[Input]] around [[ByteString]].
     */
-  implicit final object ByteStringWrapper extends Input.Wrapper[ByteString] {
-    type In = FromByteString
+  implicit final object ByteStringProvider extends Input.Provider[ByteString] {
+    type Bytes = ByteString
+    type In    = FromByteString
+    def byteAccess               = ByteStringByteAccess
     def apply(value: ByteString) = new FromByteString(value)
   }
 
-  final class FromByteString(byteString: ByteString) extends Input {
-    type Bytes    = ByteString
-    type Position = Input.Position
+  final class FromByteString(byteString: ByteString) extends Input[ByteString] {
+    private[this] var _cursor: Int = _
 
-    protected var _cursor: Int = _
+    def cursor: Long = _cursor.toLong
 
-    @inline def cursor: Long = _cursor.toLong
-    @inline def byteAccess   = ByteStringByteAccess
+    def moveCursor(offset: Int): this.type = {
+      _cursor += offset
+      this
+    }
 
-    def position(cursor: Long): Position = Input.Position(this, cursor)
-
-    @inline def prepareRead(length: Long): Boolean = _cursor + length <= byteString.length
+    def prepareRead(length: Long): Boolean = _cursor + length <= byteString.length
 
     def readByte(): Byte = {
       val c = _cursor
@@ -93,13 +94,9 @@ object akka {
       byteString(c)
     }
 
-    @inline def readByteOrFF(): Byte = {
-      def readPadded(): Byte = {
-        _cursor += 1
-        -1
-      }
-      if (_cursor < byteString.length) readByte() else readPadded()
-    }
+    def readBytePadded(pp: Input.PaddingProvider[ByteString]): Byte =
+      if (_cursor < byteString.length) readByte()
+      else pp.padByte()
 
     def readDoubleByteBigEndian(): Char = {
       val c = _cursor
@@ -107,16 +104,10 @@ object akka {
       ((byteString(c) << 8) | byteString(c + 1) & 0xFF).toChar
     }
 
-    @inline def readDoubleByteBigEndianPaddedFF(): Char = {
-      def readPadded(): Char = {
-        val c = _cursor
-        _cursor = c + 2
-        byteString.length - c match {
-          case 1 => (byteString(c) << 8 | 0xFF).toChar
-          case _ => '\uffff'
-        }
-      }
-      if (_cursor < byteString.length - 1) readDoubleByteBigEndian() else readPadded()
+    def readDoubleByteBigEndianPadded(pp: Input.PaddingProvider[ByteString]): Char = {
+      val remaining = byteString.length - _cursor
+      if (remaining >= 2) readDoubleByteBigEndian()
+      else pp.padDoubleByte(remaining)
     }
 
     def readQuadByteBigEndian(): Int = {
@@ -128,19 +119,10 @@ object akka {
       byteString(c + 3) & 0xFF
     }
 
-    @inline def readQuadByteBigEndianPaddedFF(): Int = {
-      def readPadded(): Int = {
-        val c = _cursor
-        val res = byteString.length - c match {
-          case 1 => readByte() << 24 | 0xFFFFFF
-          case 2 => readDoubleByteBigEndian() << 16 | 0xFFFF
-          case 3 => readDoubleByteBigEndian() << 16 | (readByte() & 0xFF) << 8 | 0xFF
-          case _ => -1
-        }
-        _cursor = c + 4
-        res
-      }
-      if (_cursor < byteString.length - 3) readQuadByteBigEndian() else readPadded()
+    def readQuadByteBigEndianPadded(pp: Input.PaddingProvider[ByteString]): Int = {
+      val remaining = byteString.length - _cursor
+      if (remaining >= 4) readQuadByteBigEndian()
+      else pp.padQuadByte(remaining)
     }
 
     def readOctaByteBigEndian(): Long = {
@@ -156,47 +138,30 @@ object akka {
       byteString(c + 7) & 0XFFL
     }
 
-    @inline def readOctaByteBigEndianPaddedFF(): Long = {
-      def readPadded(): Long = {
-        val c = _cursor
-        val res = byteString.length - c match {
-          case 1 => readByte().toLong << 56 | 0XFFFFFFFFFFFFFFL
-          case 2 => readDoubleByteBigEndian().toLong << 48 | 0XFFFFFFFFFFFFL
-          case 3 => readDoubleByteBigEndian().toLong << 48 | (readByte() & 0XFFL) << 40 | 0XFFFFFFFFFFL
-          case 4 => readQuadByteBigEndian().toLong << 32 | 0XFFFFFFFFL
-          case 5 => readQuadByteBigEndian().toLong << 32 | (readByte() & 0XFFL) << 24 | 0XFFFFFFL
-          case 6 => readQuadByteBigEndian().toLong << 32 | (readDoubleByteBigEndian() & 0XFFFFL) << 16 | 0XFFFFL
-          case 7 =>
-            readQuadByteBigEndian().toLong << 32 | (readDoubleByteBigEndian() & 0XFFFFL) << 16 | (readByte() & 0XFFL) << 8 | 0XFFL
-          case _ => -1
-        }
-        _cursor = c + 8
-        res
-      }
-      if (_cursor < byteString.length - 7) readOctaByteBigEndian() else readPadded()
+    def readOctaByteBigEndianPadded(pp: Input.PaddingProvider[ByteString]): Long = {
+      val remaining = byteString.length - _cursor
+      if (remaining >= 8) readOctaByteBigEndian()
+      else pp.padOctaByte(remaining)
     }
 
-    @inline def readBytes(length: Long): Bytes =
-      if (length > 0) {
-        val len = length.toInt
-        val end = _cursor + len
-        if (len == length && end >= 0) {
+    def readBytes(length: Long, pp: Input.PaddingProvider[ByteString]) = {
+      val remaining = (byteString.length - _cursor).toLong
+      val len       = math.min(remaining, length).toInt
+      val bytes =
+        if (len > 0) {
           val c = _cursor
-          _cursor = end
-          byteString.slice(c, end)
-        } else throw new Borer.Error.Overflow(position(cursor), "ByteString input is limited to size 2GB")
-      } else ByteString.empty
-
-    @inline def moveCursor(offset: Int): this.type = {
-      _cursor += offset
-      this
+          _cursor = c + len
+          byteString.slice(c, _cursor)
+        } else ByteString.empty
+      if (length <= remaining) bytes
+      else pp.padBytes(bytes, length - remaining)
     }
 
-    @inline def precedingBytesAsAsciiString(length: Int): String =
+    def precedingBytesAsAsciiString(length: Int): String =
       byteString.slice(_cursor - length, _cursor).decodeString(StandardCharsets.ISO_8859_1)
   }
 
-  implicit object ByteStringOutputProvider extends Output.Provider[ByteString] {
+  implicit object ByteStringOutputProvider extends Output.ToTypeProvider[ByteString] {
     type Out = ByteStringOutput
     def apply(bufferSize: Int) = new ByteStringOutput
   }
